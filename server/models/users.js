@@ -403,6 +403,8 @@ module.exports = class User extends Model {
       }
     }
 
+    // Login completed: the account verification link is no longer needed, expire it
+    await WIKI.models.userKeys.query().delete().where('userId', user.id).where('kind', 'verify')
     return new Promise((resolve, reject) => {
       context.req.login(user, { session: false }, async errc => {
         if (errc) { return reject(errc) }
@@ -507,7 +509,9 @@ module.exports = class User extends Model {
         password: newPassword,
         mustChangePwd: false
       }).findById(usr.id)
-
+      
+  // Reset links are only consumed here (not when opened), so invalidate all of them now
+   await WIKI.models.userKeys.query().delete().where('userId', usr.id).whereIn('kind', ['resetPwd', 'changePwd'])
       return new Promise((resolve, reject) => {
         context.req.logIn(usr, { session: false }, async err => {
           if (err) { return reject(err) }
