@@ -151,16 +151,13 @@ router.get('/register', async (req, res, next) => {
  */
 router.get('/verify/:token', bruteforce.prevent, async (req, res, next) => {
   try {
-    const usr = await WIKI.models.userKeys.validateToken({ kind: 'verify', token: req.params.token })
+    // -> Mail link scanners (e.g. Outlook Safe Links) request this URL (HEAD/GET) before the user does,
+    //    so it must not consume the token or start a session. Verifying is idempotent.
+    //    The token is removed once the user has logged in (see users.afterLoginChecks).
+    const usr = await WIKI.models.userKeys.validateToken({ kind: 'verify', token: req.params.token, skipDelete: true })
     await WIKI.models.users.query().patch({ isVerified: true }).where('id', usr.id)
     req.brute.reset()
-    if (WIKI.config.auth.enforce2FA) {
-      res.redirect('/login')
-    } else {
-      const result = await WIKI.models.users.refreshToken(usr)
-      res.cookie('jwt', result.token, commonHelper.getCookieOpts())
-      res.redirect('/')
-    }
+    res.redirect('/login')
   } catch (err) {
     next(err)
   }
@@ -171,7 +168,9 @@ router.get('/verify/:token', bruteforce.prevent, async (req, res, next) => {
  */
 router.get('/login-reset/:token', bruteforce.prevent, async (req, res, next) => {
   try {
-    const usr = await WIKI.models.userKeys.validateToken({ kind: 'resetPwd', token: req.params.token })
+    // -> Don't consume the token on GET: mail link scanners (e.g. Outlook Safe Links) request
+    //    this URL (HEAD/GET) before the user and would burn it. It is invalidated once the new password is saved.
+    const usr = await WIKI.models.userKeys.validateToken({ kind: 'resetPwd', token: req.params.token, skipDelete: true })
     if (!usr) {
       throw new Error('Invalid Token')
     }
